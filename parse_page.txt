@@ -1,0 +1,2 @@
+hawb_list=["HAWB","HOUSE"]
+mawb_list=["MAWB", "MASTER"]

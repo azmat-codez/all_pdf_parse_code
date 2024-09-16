@@ -4,12 +4,17 @@ from airport import airport_codes
 import json
 
 
+
+
 # ! Class of PDF PARSE
-class TextPDFParser:
+class NormalPDFParser:
     def __init__(self, pdf_path):
         self.pdf_path = pdf_path
         self.pdf_document = fitz.open(pdf_path)
+        # airport_data = Airport.objects.filter(is_active=True).values("name", "code")
+        # self.airport_data_dict = {airport["code"]: airport["name"] for airport in airport_data}
         self.airport_data_dict = airport_codes
+
         
         self.coordinates = [
             (295.0, 0.0, 593.0, 127.0),
@@ -40,14 +45,15 @@ class TextPDFParser:
         rect = fitz.Rect(coordinates)
         text = page.get_text("text", clip=rect)
         return text
-
+    
     def extract_text_from_coordinates_2(self, page_number, coordinates):
         page = self.pdf_document.load_page(page_number)
         rect = fitz.Rect(coordinates)
         text = page.get_text("text", clip=rect)
+        # Todo -------Changes-------
         text = text.replace('\n', '')
         return text
-    
+
     def remove_numeric_prefix(self, string):
         if string.isalnum():
             for i, char in enumerate(string):
@@ -71,7 +77,8 @@ class TextPDFParser:
             cleaned_hawb_no = re.sub(r'(HAWB No[:：\s]*|HAWB[:：\s]*|No[:：\s]*|\n|/)', '', hawb_no)
             return cleaned_hawb_no
         return None
-    
+
+
     def find_hawb_no_2(self, texts):
         text_list = [text for text in texts.split('\n') if text.strip()]
         for line in text_list:
@@ -159,7 +166,7 @@ class TextPDFParser:
 # ! --------- ORIGIN / DESTINATION / AIRPORT NAME start ---------
 
     def find_airports(self, text):
-        text = text.replace('  FLO', '')
+        text = text.replace('(SFO) SAN', 'SFO')
         found_airports = []
         for airport_code in self.airport_data_dict:
             matches = [(airport_code, m.start()) for m in re.finditer(r'\b' + re.escape(airport_code) + r'\b', text)]
@@ -180,11 +187,12 @@ class TextPDFParser:
             'VAL VIBRATA', 'VIA LEONARDO', 'C. SRL', 'VIA A.', '/ SPA', 'VIA CARLO',
             'VIA S.', 'IMAL SRL', 'VAT:', 'AIR WAYBILL', 'ITK', '(VIET NAM)', 'GO DAU DIST,TAY',
             'CTS INTERNATIONAL', 'LIMITED', 'CORPORATION LIM', 'WEG EQUIPAMENTOS', 'DO SUL',
-            'DYJ LOGISTICS', 'KYU', 'EI  KYO', 'STI CS', ')  LTD']
+            'DYJ LOGISTICS', 'KYU', 'EI  KYO', 'STI CS', ')  LTD', 'AGS GROUP', 'PIF GLOBAL', 'CHINA]LTD']
 
         def find_origin_1(text):
             pattern = re.compile(r'\b(\d+)\s([A-Za-z]{3})\s(\d+)\b')
             match = pattern.search(text)
+            print(match)
             if match:
                 str_between_integers = match.group(2)
                 if len(str_between_integers) == 3:
@@ -194,9 +202,11 @@ class TextPDFParser:
         def find_origin_2(text):
             pattern = re.compile(r'\b[A-Z]{3}\b')
             match = pattern.search(text)
+            print(match)
             if match:
                 return match.group()
             return None
+        
         
         for value in replace_values:
             text = text.replace(value, '')
@@ -206,11 +216,8 @@ class TextPDFParser:
         return origin
     
     def find_airports_name(self, text):
-        text = text.replace('CHENNAI-600084', '').replace('DONG', 'SHANGHAI').replace('CHENNAI', ' CHENNAI ')
+        text = text.replace('CHENNAI-600084', '').replace('DONG', 'SHANGHAI')
         text = text.upper()
-        print('----------------------')
-        print(text)
-        print('----------------------')
         found_airports = []
         for airport_code, airport_name in self.airport_data_dict.items():
             if airport_name.upper() in text:
@@ -230,7 +237,8 @@ class TextPDFParser:
     def find_description(self, texts):
         replace_values = ['AGREED', 'agreed', 'Total', 'ARRANGED', 'A G R E E D', 
         'Agreed','s  ', 'AS  ', 'Logistics Inc)', 'on and has', 'being', 'solidation has', 
-        'ransited', 'nistan, Libya,', 'ARRAND', 'SHIKHARLOGISTICS.COM', 'arge', '67,14']
+        'ransited', 'nistan, Libya,', 'ARRAND', 'SHIKHARLOGISTICS.COM', 'arge', '67,14', 'Volume)', 'value)',
+        'PPD COLL']
         
         for value in replace_values:
             texts = texts.replace(value, '')
@@ -248,12 +256,22 @@ class TextPDFParser:
                         result = lst[j]
                         break
                 break
+            
+            elif 'X-RAY' in texts:
+                result = 'X-RAY'
         return result
     
     @staticmethod
     def find_description_2(texts):
-        texts_lst = texts.replace('AGREED', '').replace('agreed', '').replace('Total', '').replace('ARRANGED', '').replace('ARRANGED', '').replace('A G R E E D', '').replace('Agreed', '')
-        lst = [text.strip() for text in texts_lst.split('\n') if text.strip()]
+        
+        replace_values = ['AGREED', 'agreed', 'Total', 'ARRANGED', 'A G R E E D', 
+        'Agreed','s  ', 'AS  ', 'Logistics Inc)', 'on and has', 'being', 'solidation has', 
+        'ransited', 'nistan, Libya,', 'ARRAND', 'SHIKHARLOGISTICS.COM', 'arge', '67,14', 'Volume)']
+        
+        for value in replace_values:
+            texts = texts.replace(value, '')
+        lst = [text.strip() for text in texts.split('\n') if text.strip()]
+        
         keywords_to_exclude = ['INVOICE', 'HS CODE', 'MANIFEST', 'NO.', 'PALLETS', 'CONTAINING:', 'DUE:', 'AWB', 'CBM']
         result = None
         for text in lst:
@@ -262,6 +280,29 @@ class TextPDFParser:
                 if not any(char.isdigit() for char in result) and len(result) > 5:
                     break
         return result if result else "No description found"
+    
+    def get_mawb_hawb(self):
+        page_number = 0
+        data = {}
+        try:
+            mawb_hawb_no = self.extract_text_from_coordinates(page_number, self.coordinates[0])
+            if not data.get('mawb_hawb'):
+                data['mawb_hawb'] = self.find_hawb_no_1(mawb_hawb_no)
+            if not data.get('mawb_hawb'):
+                data['mawb_hawb'] = self.find_hawb_no_2(mawb_hawb_no)
+            if not data.get('mawb_hawb'):
+                alternative_mawb_hawb_no = self.extract_text_from_coordinates(page_number, (299.0, 143.0, 590.0, 258.0))
+                data['mawb_hawb'] = self.find_hawb_no_1(alternative_mawb_hawb_no)
+            if not data.get('mawb_hawb'):
+                data['mawb_hawb'] = self.find_hawb_no_3()
+            if not data.get('mawb_hawb'):
+                data['mawb_hawb'] = self.find_mawb_no_1()
+            if not data.get('mawb_hawb'):
+                data['mawb_hawb'] = self.find_mawb_no_2(mawb_hawb_no)
+        except Exception as e:
+            print(f"Error occurred while extracting MAWB/HAWB: {e}")
+        return data
+
 
     def get_pdf_data(self, pdf_path):
         page_number = 0
@@ -285,14 +326,12 @@ class TextPDFParser:
             
             # Origin
             origin = self.extract_text_from_coordinates(page_number, self.coordinates[4])
-            # print(origin)
             data['origin'] = self.find_origin(origin)
+            
+            print(data['origin'])
                     
             # Destination
             destination = self.extract_text_from_coordinates(page_number, self.coordinates[1])
-            # print('_ '*50)
-            # print(destination)
-            # print('_ '*50)
             data['destination'] = self.find_airports(destination)
             if not data['destination']:
                 destination = self.extract_text_from_coordinates(page_number, (0.0, 238.0, 278.0, 322.0))
@@ -311,77 +350,51 @@ class TextPDFParser:
             # ? ------------------------- PKGS and Gross Weight Start -------------------------
             pkgs = gross_weight = ''
             pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[11])
-            # print(pkgs_weight,222)
-            matches = re.findall(r'(\d[\d,]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight)
-            print(matches,"-match")
+            matches = re.findall(r'(\d[\d,.]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight.replace("24 HOUR EMERGENCY CONTACT:+8610863",""))
             
             if not matches:
                 pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[10])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d[\d,]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight)
-                print(matches,"0-match")
-            if not matches:
-                pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[5])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d[\d,]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight)
-                if matches:
+                # matches = re.findall(r'(\d[\d,.]*[a-zA-Z]*)\s*[\s\S]*?(\d+)', pkgs_weight)
+                matches = re.findall(r'(\d[\d,.]*\s*[a-zA-Z]*)[\s\S]*?Weight[\s\S]*?(\d+)', pkgs_weight)
+            try:
+                if len(matches) == 2:
+                    pkgs, gross_weight = matches[1]
+                    if '.' not in gross_weight:
+                        if ',' not in gross_weight:
+                            if not gross_weight.isdigit():
+                                pkgs, gross_weight = matches[0]
+                            
+                elif len(matches) == 3:
+                    pkgs, gross_weight = matches[2]
+                    if '.' not in gross_weight:
+                        if ',' not in gross_weight:
+                            if not gross_weight.isdigit():
+                                pkgs, gross_weight = matches[0]
+                else:
                     pkgs, gross_weight = matches[0]
-                print(matches,"1-match")
-            if not matches:
-                pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[4])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d[\d,]*)\s+([\d.,\s]+(?:[a-zA-Z]*))', pkgs_weight)
-                print(matches,"2-match")
-                if len(matches) == 1:
-                    pkgs,gross_weight = matches[0]
-            if not matches or '\n' in gross_weight or gross_weight.strip() == 'K':
-                pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[6])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d[\d,]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight)
-                print(matches,"3-match")
-            if not matches or gross_weight == '\n' or gross_weight.strip() == 'K':
-                pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[7])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d[\d,]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight)
-                matches = re.findall(r'([\w,]+)\s+([\d.,]+[a-zA-Z]*)', pkgs_weight)
-                # r'(\w+)\s+([\d.,]+[a-zA-Z]*)'
-                print(matches,"4-match")
-            if not matches or gross_weight == '\n' or gross_weight.strip() == 'K':
-                pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[2])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d[\d,]*)\s+([\d.,]+(?:[a-zA-Z]*))', pkgs_weight)
-                print(matches,"5-match")
-            if not matches or gross_weight == '\n' or gross_weight.strip() == 'K':
-                pkgs_weight = self.extract_text_from_coordinates(page_number, self.coordinates3[8])
-                print(pkgs_weight,222)
-                matches = re.findall(r'(\d+)\s+([\d.,]+(?:[a-zA-Z]*)?)', pkgs_weight)
-                print(matches,"6-match")
-            if len(matches) > 1:
-                pkgs, gross_weight = matches[1]
-                if '.' not in gross_weight:
-                    if ',' not in gross_weight:
-                        pkgs, gross_weight = matches[0]
-            else:
-                print("MMM")
-                pkgs, gross_weight = matches[0]
-            pkgs = re.sub(r'[a-zA-Z]', '', pkgs)
-            if not pkgs.isdigit():
-                pkgs, gross_weight = gross_weight, pkgs
-            gross_weight = re.sub(r'[a-zA-Z]', '', gross_weight)
-                
-            data['pkgs'] = pkgs
-            if ',' in gross_weight and '.' in gross_weight:
-                if gross_weight.index(',') < gross_weight.index('.'):
-                    # 1,544.00
-                    gross_weight = gross_weight.replace(',', '')
-                elif gross_weight.index(',') > gross_weight.index('.'):
-                    # 2.55,00
-                    gross_weight = gross_weight.replace('.', '')
-                    gross_weight = gross_weight.replace(',', '.') 
-            elif ',' in gross_weight and '.' not in gross_weight:
-                gross_weight = gross_weight.replace(',','.')
-            gross_weight = re.sub(r'[a-zA-Z]', '', gross_weight)
-            data['gross_weight'] = gross_weight.replace(" ", '')
+                pkgs = re.sub(r'[a-zA-Z]', '', pkgs)
+                if not pkgs.isdigit():
+                    pkgs, gross_weight = gross_weight, pkgs
+                gross_weight = re.sub(r'[a-zA-Z]', '', gross_weight)
+                    # if ',' in gross_weight:
+                    #     gross_weight = gross_weight.replace('.','')
+                    
+                data['pkgs'] = pkgs
+                if ',' in gross_weight and '.' in gross_weight:
+                    if gross_weight.index(',') < gross_weight.index('.'):
+                        # 1,544.00
+                        gross_weight = gross_weight.replace(',', '')
+                    elif gross_weight.index(',') > gross_weight.index('.'):
+                        # 2.55,00
+                        gross_weight = gross_weight.replace('.', '')
+                        gross_weight = gross_weight.replace(',', '.') 
+                elif ',' in gross_weight and '.' not in gross_weight:
+                    gross_weight = gross_weight.replace(',','.')
+
+                gross_weight = re.sub(r'[a-zA-Z]', '', gross_weight)
+                data['gross_weight'] = gross_weight.replace(" ", '')
+            except Exception:
+                pass
             # ? ------------------------- PKGS and Gross Weight End -------------------------
             
             # Description
@@ -394,47 +407,26 @@ class TextPDFParser:
         except Exception as e:
             print(e)
         return data
-    
-    
-    
-    
-    # PDF FILES/TEXT PDF/160-82822891/160-82822891.pdf
-    # PDF FILES/TEXT PDF/160-82822891/WLAE2406203.PDF
-    
-if __name__ == "__main__":
-    
-    mawb_file_path = [
-                    # 'PDF FILES/TEXT PDF/160-82573223.pdf'
-                    # 'PDF FILES/TEXT PDF/160-82822891/160-82822891.pdf'
-                    # 'PDF FILES/TEXT PDF/160-85088312/YTI24A0710-MAWB(update).pdf'
-                    ''
-                    ]
-    hawb_file_path = [
-                    # ['PDF FILES/TEXT PDF/CTS024310 hawb(1).pdf']
-                    # ['PDF FILES/TEXT PDF/160-82822891/WLAE2406203.PDF']
-                    ['PDF FILES/TEXT PDF/160-85088312/YTI24A0710-HAWB(UPDATE).pdf']
-                    # ['']
-                    ]    
-    hawb_all_data = []
-    
-    # PDF FILES/TEXT PDF/160-85088312/YTI24A0710-HAWB(UPDATE).pdf 
-    # PDF FILES/TEXT PDF/160-85088312/YTI24A0710-MAWB(update).pdf
-    
-    normal_pdf_formate = TextPDFParser(mawb_file_path[0])
-    mawb_data = normal_pdf_formate.get_pdf_data(mawb_file_path[0])
-    print("This is Normal PDF Parse")
-    
-    
-    
-    for hawb_file in hawb_file_path:
-        normal_pdf_formate = TextPDFParser(hawb_file[0])
-        data = normal_pdf_formate.get_pdf_data(hawb_file[0])
-        hawb_all_data.append(data)
-        print("This is Normal PDF Parse")
-        
-        
-    data = {"mawb_data": mawb_data, "hawb_data": hawb_all_data}
-    print(data)
-    with open('JSON\hawb_mawb_data.json', 'w') as file:
-        json.dump(data, file)
 
+# password_pdf/603-51132152_001.pdf 
+# password_pdf/603-51132152_2_20240906.pdf 
+# password_pdf/VHF20742108.pdf
+
+
+# Shipper’s Name and Address
+# Shipper’s Account Number
+# PIF GLOBAL LOGISTICS[CHINA]LTD.SHANGHAIBRA
+# ROOM 307-309, NO. 1438 NORTH SHANXI ROAD, 
+# PUTUO DISTRICT, SHANGHAI
+# USCI+91310109323170469D
+# 160  
+# PVG 85975315
+
+
+# 3214
+
+if __name__ == '__main__':
+    pdf_path = r'MAWB_HAWB\MAWB\160-85975315MAWB.pdf'
+    data = NormalPDFParser(pdf_path)
+    data = data.get_pdf_data(pdf_path)
+    print(data)

@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "./mawb_hawb_code"
+    ]
+}

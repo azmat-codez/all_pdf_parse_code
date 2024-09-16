@@ -55,6 +55,7 @@ class UPSPdfParser:
 
     def get_ups_data(self, pdf_path=None):
         pdf_text_pages, total_pages = self.extract_text_from_pdf()
+
         mawb_data = {}
         hawb_all_data = []
 
@@ -73,7 +74,11 @@ class UPSPdfParser:
                 if "SHIPMENTS" in line:
                     next_line = text[i].strip()
                     parts = next_line.split()
+
                     mawb_data["destination"] = [self.remove_num(parts[-3])]
+                    if 'SHIPMENTS' in mawb_data["destination"] or len(mawb_data["destination"][0]) > 6:
+                        next_line = text[i+1].strip()
+                        mawb_data["destination"] = [self.remove_num(next_line.split(' ')[-3])]
                     mawb_data["airports_name"] = []
                     mawb_data["pkgs"] = int(parts[0])
                     gross_weight = parts[5]
@@ -162,16 +167,8 @@ class UPSPdfParser:
 if __name__ == "__main__":
     
     manifest_file_path = [
-                        # 'PDF FILES/UPS PDF/f42942d5-4e60-4db1-a6fb-491f79baed15.pdf',
-                        # r'PDF FILES\UPS PDF\615c138c-1328-499b-b0ce-abab433f25ea.pdf'
-                        # r'PDF FILES/UPS PDF/020LAX95823593Courier International.pdf ',
-                        # r'PDF FILES/UPS PDF/020VLC02435786Courier International.pdf ',
-                        r'PDF FILES/UPS PDF/125JFK18056371Courier International.pdf ',
-                        # r'PDF FILES/UPS PDF/157BKK30706605Courier International.pdf ',
-                        # r'PDF FILES/UPS PDF/232HKG57703030Courier International.pdf ',
-                        # r'PDF FILES/UPS PDF/607ORD32979380Courier International.pdf ',
-                        # r'PDF FILES/UPS PDF/607ORD34212765Courier International.pdf ',
-                        # r'PDF FILES/UPS PDF/615c138c-1328-499b-b0ce-abab433f25ea.pdf',
+                        r'MANIFEST PDF/235LAX35541796Courier International.pdf',
+                        # r'MANIFEST PDF\603LHR50967593Courier_International.pdf'
                     ]
     
     parser = UPSPdfParser(manifest_file_path[0])

@@ -159,7 +159,7 @@ class  ManifestTableExtractor:
                             if mawb_hawb.isalnum():
                                 data = {
                                     "mawb_number": mawb_number,
-                                    "origin":  self.get_origin(),
+                                    "origin": 'None' if self.get_origin() == '' else self.get_origin(),
                                     "destination": self.get_dest(),
                                     "pkgs": row.iloc[1],
                                     "gross_weight": row.iloc[3].replace('KGS', ''),
@@ -181,7 +181,7 @@ class  ManifestTableExtractor:
                             if mawb_hawb.isalnum():
                                 data = {
                                     "mawb_number": mawb_number,
-                                    "origin":  '',
+                                    "origin":  None,
                                     "destination": row.iloc[3],
                                     "pkgs": row.iloc[1],
                                     "gross_weight": row.iloc[2],
@@ -192,7 +192,7 @@ class  ManifestTableExtractor:
                             elif mawb_hawb.isalnum():
                                 data = {
                                     "hawb_number": mawb_hawb,
-                                    "origin":  '',
+                                    "origin":  None,
                                     "destination": row.iloc[3],
                                     "pkgs": row.iloc[1],
                                     "gross_weight": row.iloc[2],
@@ -246,6 +246,52 @@ class  ManifestTableExtractor:
         except IndexError as e:
             print('ERROR: ', e)
         return mawb_data, hawb_all_data
+    
+    def extract_tables_05(self, pdf_path):
+        mawb_data = {}
+        hawb_all_data = []
+        try:
+            with pdfplumber.open(self.pdf_path) as pdf:
+                for page_number, page in enumerate(pdf.pages, start=1):
+                    tables = page.extract_tables()
+                    if tables:
+                        for table_number, table in enumerate(tables, start=1):
+                            df = pd.DataFrame(table[1:], columns=table[0])
+                            if table_number == 2:
+                                for _, row in df.iterrows():
+                                    data = {
+                                        "mawb_number": (row.iloc[0]).replace('-', ''),
+                                        "origin":  row.iloc[2],
+                                        "destination": row.iloc[3],
+                                        "pkgs": row.iloc[4],
+                                        "gross_weight": row.iloc[5],
+                                        "description": row.iloc[6],
+                                        "pdf_path" : pdf_path
+                                    }
+                                    mawb_data = data
+                            elif table_number == 3:
+                                for _, row in df.iterrows():
+                                    if not row.iloc[0] or row.iloc[0] == 'TOTAL':
+                                        continue
+                                    else:
+                                        data = {
+                                            "hawb_number": (row.iloc[0]).replace('-', ''),
+                                            "origin":  row.iloc[2],
+                                            "destination": row.iloc[3],
+                                            "pkgs": row.iloc[4],
+                                            "gross_weight": row.iloc[5],
+                                            "description": row.iloc[6]
+                                        }
+                                        hawb_all_data.append(data)
+                            else:
+                                continue
+                    else:
+                        print(f"No tables found on Page {page_number}")
+                        
+            return mawb_data, hawb_all_data
+        except Exception as e:
+            print('ERROR: ', e)
+
 
     # Todo ------------------------ PDF Parse Function End ------------------------
     # * ------------------------ CALL Parse Function Start ------------------------
@@ -266,16 +312,24 @@ class  ManifestTableExtractor:
                 except Exception as e:
                     pass
 
+                
             if not mawb_data and not hawb_all_data:
                 print("Attempting extract_tables_03")
                 try:
-                    mawb_data, hawb_all_data = self.extract_tables_03(pdf_path)
+                    mawb_data, hawb_all_data = self.extract_tables_05(pdf_path)
+                except Exception as e:
+                    pass
+                
+            if not mawb_data and not hawb_all_data:
+                print("Attempting extract_tables_05")
+                try:
+                    mawb_data, hawb_all_data = self.extract_tables_04(pdf_path)
                 except Exception as e:
                     pass
 
             if not mawb_data and not hawb_all_data:
                 print("Attempting extract_tables_04")
-                mawb_data, hawb_all_data = self.extract_tables_04(pdf_path)
+                mawb_data, hawb_all_data = self.extract_tables_03(pdf_path)
 
             return mawb_data, hawb_all_data
         except Exception as e:
@@ -287,7 +341,7 @@ class  ManifestTableExtractor:
 
 if __name__ == '__main__':
     
-    manifest_file_path = ['PDF FILES\TABLE MANIFEST PDF\921-46033201 MF (1).PDF']
+    manifest_file_path = [r'MANIFEST PDF\615-06385912_MNFT.pdf']
     
     cargo_manifest_check = True
     table_pdf_format = ManifestTableExtractor(manifest_file_path[0])
